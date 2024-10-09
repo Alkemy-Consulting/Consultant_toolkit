@@ -4,7 +4,7 @@ require_login: True
 ## if none is provided will default to logs, can also be provided as an env variable LOGS_ROOT_FOLDER
 ## if purge_logs_password is not provided, the purge logs button in the settings&recovery will be freely available to the user
 logs_root_folder: logs
-#purge_logs_password: 'pinguino'
+purge_logs_password: 'pinguino'
 
 ## Assistants base config 
 assistant_configs:
