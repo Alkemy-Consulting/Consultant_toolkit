@@ -20,7 +20,7 @@ shared_folder: shared
 shared_summaries_folder: summaries
 shared_completed_folder: archived
 shared_wip_folder: wip
-scheduler_frequency: 60
+scheduler_frequency: 20
 max_cuncurrent_jobs: 5
 
 # Services
