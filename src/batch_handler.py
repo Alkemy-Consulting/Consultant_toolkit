@@ -320,27 +320,56 @@ class BatchManager(FolderSetupMixin):
         session_logger.session_id = job_payload.session_id
         session_logger.file_name = job_payload.input_file
 
-        #create managers
-        serpapi_manager = SerpApiManager(session_logger, credential_manager)
-        oxylabs_manager = OxyLabsManager(session_logger, credential_manager)
-        llm_manager = LlmManager(
-            session_logger, 
-            credential_manager, 
-            job_payload.kwargs.get("llm_model", "gpt-4o-mini"), 
-            job_payload.kwargs.get("llm_temp", 0.3)
-        )
-
-        # Map function names to their implementations
-        available_functions = {
-            "llm_request": llm_manager.llm_request,
-            "serpapi_serp_crawler": serpapi_manager.serpapi_serp_crawler,
-            "oxylabs_serp_crawler": oxylabs_manager.oxylabs_serp_crawler,
-            "get_amazon_product_info": oxylabs_manager.get_amazon_product_info,
-            "get_amazon_review": oxylabs_manager.get_amazon_review,
-            "web_crawler": oxylabs_manager.web_crawler,
-            "serpapi_review_crawler": serpapi_manager.serpapi_review_crawler,
-            "serpapi_maps_reviews_crawler": serpapi_manager.serpapi_maps_reviews_crawler,
-        }        
+        # Initialize managers only for functions that need them
+        available_functions = {}
+        
+        # Initialize SerpAPI manager for SerpAPI functions
+        serpapi_functions = {
+            "serpapi_serp_crawler",
+            "serpapi_review_crawler", 
+            "serpapi_maps_reviews_crawler"
+        }
+        
+        # Initialize OxyLabs manager for OxyLabs functions  
+        oxylabs_functions = {
+            "oxylabs_serp_crawler",
+            "get_amazon_product_info",
+            "get_amazon_review",
+            "web_crawler"
+        }
+        
+        # Initialize LLM manager for LLM functions
+        llm_functions = {
+            "llm_request"
+        }
+        
+        if job_payload.function in serpapi_functions:
+            serpapi_manager = SerpApiManager(session_logger, credential_manager)
+            available_functions.update({
+                "serpapi_serp_crawler": serpapi_manager.serpapi_serp_crawler,
+                "serpapi_review_crawler": serpapi_manager.serpapi_review_crawler,
+                "serpapi_maps_reviews_crawler": serpapi_manager.serpapi_maps_reviews_crawler,
+            })
+            
+        if job_payload.function in oxylabs_functions:
+            oxylabs_manager = OxyLabsManager(session_logger, credential_manager)
+            available_functions.update({
+                "oxylabs_serp_crawler": oxylabs_manager.oxylabs_serp_crawler,
+                "get_amazon_product_info": oxylabs_manager.get_amazon_product_info,
+                "get_amazon_review": oxylabs_manager.get_amazon_review,
+                "web_crawler": oxylabs_manager.web_crawler,
+            })
+            
+        if job_payload.function in llm_functions:
+            llm_manager = LlmManager(
+                session_logger, 
+                credential_manager, 
+                job_payload.kwargs.get("llm_model", "gpt-4o-mini"), 
+                job_payload.kwargs.get("llm_temp", 0.3)
+            )
+            available_functions.update({
+                "llm_request": llm_manager.llm_request,
+            })        
         
         list_supported_functions = {
             "serpapi_serp_crawler",

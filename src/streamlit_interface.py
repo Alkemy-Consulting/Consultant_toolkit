@@ -80,7 +80,7 @@ class DfRequestConstructor():
                 waiting_input=False
             
             #############TEST BATCH RUN################
-            if st.button(f"Run a {function_name} test batch", use_container_width=True, disabled=waiting_input):
+            if st.button(f"Run a {function_name} test batch", width='stretch', disabled=waiting_input):
                 progress_bar = st.progress(0, text="Preparing the operation")
                 df=self.df_processor.processed_df
                 total_to_process = batch_size if batch_size > 0 else len(df[df[response_column].isna()].index)
@@ -104,7 +104,7 @@ class DfRequestConstructor():
                     st.error(f"An error occurred: {str(e)}")
 
             #############FULL FILE RUN################      
-            if st.button(f"Run {function_name} on the whole file", use_container_width=True, disabled=waiting_input):
+            if st.button(f"Run {function_name} on the whole file", width='stretch', disabled=waiting_input):
                 if query_column == default_query_value:
                     st.warning("*No column selected. Please choose a column.*")
                 else:
@@ -382,7 +382,7 @@ class DfRequestConstructor():
             
             st.write("**Column Summary:**")
             column_summary = self.df_processor.generate_column_summary(df)
-            st.dataframe(column_summary, use_container_width=True)
+            st.dataframe(column_summary, width='stretch')
         
 
         return self.df_processor
@@ -406,7 +406,7 @@ class SingleRequestConstructor():
             function = audio_transcriber.whisper_groq_transcribe
 
         transcript = ""
-        if st.button("Transcribe!", use_container_width=True, type="primary", disabled=transcribe_button_disabled):
+        if st.button("Transcribe!", width='stretch', type="primary", disabled=transcribe_button_disabled):
             transcript = function(audio_file)
         if transcribe_button_disabled:
             st.warning("Upload an audio file on the sidebar to be able to transcribe it")
@@ -429,7 +429,7 @@ class SingleRequestConstructor():
     
         summarized_transcript = ""
         
-        if st.button("Summarize!", use_container_width=True, type="primary", disabled=summarize_button_disabled):
+        if st.button("Summarize!", width='stretch', type="primary", disabled=summarize_button_disabled):
             with st.spinner(' 🔄 Summarizing...'):
                 chunks_list = TextEmbeddingsProcessors().text_token_chunker(text, chunk_length, chunk_overlap)
                 
@@ -484,7 +484,7 @@ class SingleRequestConstructor():
         with st.expander("Chunker options"):
             chunk_length = st.slider("Chunk lenght (in tokens)", min_value=50,max_value=1000,value=100,step=1)
             chunk_overlap = st.slider("Chunk overlap (in tokens)", min_value=0,max_value=100, value=0 ,step=1)    
-        if st.button("Chunk the content", use_container_width=True):
+        if st.button("Chunk the content", width='stretch'):
             chunks_list = TextEmbeddingsProcessors().text_token_chunker(user_doc, chunk_length, chunk_overlap)
             df = pd.DataFrame({
                 "file_name": [file_name] * len(chunks_list),  
@@ -500,7 +500,7 @@ class SingleRequestConstructor():
             num_context=st.slider(label="Context Lenght",min_value=0,max_value=5,value=1,step=1, help="The tool will retrieve the relevant chunk, but also stitch the neighbour chung to it. How many you ask? You set it right at this slider my dear.")
             num_chunk=st.slider(label="Number of relevant chunk",min_value=0,max_value=3,value=2,step=1, help="The tool will order chunks based on how relevant they are to your question, you may want to get more than just the most relevant. And that's something you choose right here my friend.")
         
-        if st.button("Answer me", use_container_width=True, disabled=st.session_state['doc_status']['not_studied'], type="primary"):
+        if st.button("Answer me", width='stretch', disabled=st.session_state['doc_status']['not_studied'], type="primary"):
             query_embedding = llm_manager.embed_query(query)
             
             combined_chunk, df = TextEmbeddingsProcessors().get_combined_chunk(df, 
@@ -666,13 +666,13 @@ class assistant_interface():
 
 
     def thread_buttons(self):
-        if not self.unavailable and st.sidebar.button("reset thread", use_container_width=True):
+        if not self.unavailable and st.sidebar.button("reset thread", width='stretch'):
             self.thread_id = self.openai_advanced_uses.reset_thread(self.thread_id)
             st.session_state['messages'] = []
             self.st.success(f"New Thread id generated: {self.thread_id}")
             
 
-        if not self.unavailable and st.sidebar.button("erase thread", use_container_width=True):
+        if not self.unavailable and st.sidebar.button("erase thread", width='stretch'):
             self.thread_id = self.openai_advanced_uses.erase_thread(self.thread_id)
             st.session_state['messages'] = []
             self.st.success(f"Thread data for thread id: {self.thread_id} has been deleted.")
@@ -806,11 +806,11 @@ def dataframe_streamlit_handler(df_processor:DataFrameProcessor):
         
         df_processor.processed_df = st.session_state['processed_df']
 
-        if st.sidebar.button("Refresh columns list", use_container_width=True, 
+        if st.sidebar.button("Refresh columns list", width='stretch', 
                                   help="Will force the refresh of the lists of available columns throughout the application"):
             st.session_state['available_columns'] = df_processor.processed_df.columns.tolist()
 
-        if st.sidebar.button('Restore Processing', use_container_width=True, 
+        if st.sidebar.button('Restore Processing', width='stretch', 
                             help="Will restore the file to the originally uploaded file"):
             st.session_state["session_logger"].reinitialize_session_id()
             st.session_state["session_logger"].log_excel(df_processor.user_df, "original")
@@ -885,7 +885,7 @@ class streamlit_batches_status():
         st.write("### Batches Data")
         st.write("Overview of all batches:")
         columns_to_display = ['batch_id', 'status', 'input_file', 'session_id', 'function', 'schedule_time']  
-        st.dataframe(self.batches_df[columns_to_display], hide_index=True, use_container_width=True, height=160)
+        st.dataframe(self.batches_df[columns_to_display], hide_index=True, width='stretch', height=160)
 
     def display_wip_batches_progress(self):
         st.write("### Wip Batches Progress")
@@ -946,7 +946,7 @@ class streamlit_batches_status():
                     with open(output_file_path, "rb") as file:
                         st.download_button(
                             label="Download Output File",
-                            use_container_width=True,
+                            width='stretch',
                             data=file,
                             file_name=filename,
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -989,7 +989,7 @@ class streamlit_batches_status():
                 
                 if selected_filename:
                     selected_row = stoppable_batches[stoppable_batches['filename'] == selected_filename].iloc[0]
-                    if st.button("Stop batch", use_container_width=True):
+                    if st.button("Stop batch", width='stretch'):
                         try:    
                             self.batch_summary_logger.post_stop_request(selected_row['user_id'], selected_row['batch_id'])
                             st.success(f"Stop request sent for batch: {selected_filename}")
@@ -1007,7 +1007,7 @@ class streamlit_batches_status():
             try:
                 # Convert the list to a DataFrame for better display
                 pending_stop_requests_df = pd.DataFrame(pending_stop_requests)
-                st.dataframe(pending_stop_requests_df, hide_index=True, use_container_width=True)
+                st.dataframe(pending_stop_requests_df, hide_index=True, width='stretch')
             except Exception as e:
                 st.error(f"Error displaying pending stop requests: {str(e)}")
                 st.write(pending_stop_requests)  # Fallback to plain list display
@@ -1044,10 +1044,11 @@ class DeepExtractorInterface:
                 "validator": self._is_valid_asin,
                 "error_msg": "One or more invalid ASINs detected"
             },
-            "Google Reviews": {  # TO REVIEW AND ADD A VALIDATOR
-                "function_name": "serpapi_review_crawler",
-                "countries": country_list,
-            },
+            # TEMPORARILY DISABLED: Google Reviews - SerpAPI discontinued the Google Product API endpoint
+            # "Google Reviews": {  # TO REVIEW AND ADD A VALIDATOR
+            #     "function_name": "serpapi_review_crawler",
+            #     "countries": country_list,
+            # },
             "Google Maps Reviews": {  # TO REVIEW AND ADD A VALIDATOR
                 "function_name": "serpapi_maps_reviews_crawler",
                 "countries": country_list,
@@ -1100,7 +1101,7 @@ class DeepExtractorInterface:
             )
         
         # Post request button
-        if st.button("Post Request", use_container_width=True, disabled=deactivated_buton):
+        if st.button("Post Request", width='stretch', disabled=deactivated_buton):
             self.batch_request_logger.post_list_scheduler_request(
                 queries_list,
                 session_logger=self.session_logger,
@@ -1181,7 +1182,7 @@ class InfoFinderInterface():
                     ),
                 },
                 hide_index=True,
-                use_container_width=True,
+                width='stretch',
                 selection_mode="multi-row",
                 on_select="rerun",
             )

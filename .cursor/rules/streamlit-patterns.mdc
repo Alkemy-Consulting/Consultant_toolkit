@@ -1,0 +1,189 @@
+---
+globs: pages/*.py,**/streamlit*.py,Hello.py
+---
+# Streamlit UI Patterns
+
+## Page Structure
+
+### Standard Page Template
+Every page follows this pattern (see [Hello.py](mdc:Hello.py) and [pages/1_📈 Generative Excel.py](mdc:pages/1_📈 Generative Excel.py)):
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+from src.streamlit_setup import page_setup, page_footer
+import streamlit as st
+
+# Page configuration
+page_config = {
+    'page_title': "Page Name",
+    'page_icon': "🔧",
+}
+
+page_setup(page_config)
+
+# Authentication check
+if st.session_state["authentication_status"]:
+    # Main page content here
+    session_logger = st.session_state["session_logger"]
+    credential_manager = st.session_state['credential_manager']
+    
+    # Page functionality
+    
+elif st.session_state["authentication_status"] is False:
+    st.error('Username/password is incorrect')
+    st.sidebar.error('Username/password is incorrect')
+elif st.session_state["authentication_status"] is None:
+    st.sidebar.warning('Please enter your username and password')
+
+page_footer()
+```
+
+## UI Components
+
+### Data Loading
+Use `DataLoader` class from [src/streamlit_setup.py](mdc:src/streamlit_setup.py):
+```python
+data_loader = DataLoader("dataframe", session_logger)
+if isinstance(data_loader.user_file, pd.DataFrame) and not data_loader.user_file.empty:
+    user_df = data_loader.user_file
+```
+
+### Progress Indicators
+Use `st.progress()` with text updates:
+```python
+progress_bar = st.progress(0, text="Preparing the operation")
+# Update during processing
+progress_bar.progress(int(count / total * 100), text=f"Processing... {count}/{total}")
+```
+
+### Tabs for Multiple Features
+Use `st.tabs()` to organize related functionality:
+```python
+tabs = st.tabs(["LLM", "Google", "Reviews", "Amazon", "Youtube", "Crawler"])
+with tabs[0]:
+    # LLM functionality
+with tabs[1]:
+    # Google functionality
+```
+
+### Input Validation
+Always validate user input before processing:
+```python
+query_column = st.selectbox("Select column", options=['Select...'] + df.columns.tolist())
+response_column = st.text_input("Response Column Name", "response")
+
+if query_column == response_column:
+    st.warning("*Select a different column for response*")
+    waiting_input = True
+elif query_column == 'Select...':
+    st.warning("*No column selected*")
+    waiting_input = True
+else:
+    waiting_input = False
+
+st.button("Process", disabled=waiting_input)
+```
+
+### Session State for Data Persistence
+Sync DataFrame between operations:
+```python
+# From src/streamlit_interface.py
+def sync_streamlit_processed_df(df_processor):
+    st.session_state['df_processor'] = df_processor
+```
+
+### Sidebar Usage
+- Use sidebar for configuration and global settings
+- Display session information in sidebar
+- Use `st.sidebar.divider()` to separate sections
+
+## Streamlit Best Practices
+
+### Widget Keys
+Use unique keys for widgets to avoid state conflicts:
+```python
+st.text_input("API Key", key=f"{service_name}_api_key")
+```
+
+### Container Width
+Use `width='stretch'` for buttons to make them full width:
+```python
+st.button("Run Process", width='stretch')
+```
+
+### File Uploaders
+```python
+uploaded_file = st.file_uploader("Upload file", type=['csv', 'xlsx', 'xls'])
+if uploaded_file is not None:
+    # Process file
+```
+
+### Download Buttons
+Use `st.download_button()` with proper MIME types:
+```python
+st.download_button(
+    label="Download CSV",
+    data=df.to_csv(index=False).encode('utf-8'),
+    file_name='output.csv',
+    mime='text/csv'
+)
+```
+
+### Expanders for Optional Content
+Use `st.expander()` for advanced options:
+```python
+with st.expander("Advanced Options"):
+    batch_size = st.number_input("Batch Size", min_value=1, value=10)
+```
+
+### Auto-refresh for Monitoring
+Use `streamlit-autorefresh` for pages that need updates:
+```python
+from streamlit_autorefresh import st_autorefresh
+count = st_autorefresh(interval=5000, key="batch_monitor")
+```
+
+## DataFrame Display
+
+### Show DataFrame with Controls
+```python
+st.dataframe(df, width='stretch')
+```
+
+### Editable Data
+```python
+edited_df = st.data_editor(df)
+```
+
+### Metrics and KPIs
+```python
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Total Rows", len(df))
+with col2:
+    st.metric("Processed", processed_count)
+with col3:
+    st.metric("Remaining", remaining_count)
+```
+
+## Error Messages
+
+### User-Friendly Errors
+```python
+st.error("❌ Authentication failed")
+st.warning("⚠️ Some items were skipped")
+st.success("✅ Processing complete")
+st.info("ℹ️ Additional information")
+```
+
+### Exception Handling in UI
+```python
+try:
+    result = process_data()
+except StopProcessingError as e:
+    st.error(f"Processing stopped: {str(e)}")
+except Exception as e:
+    logger.error(f"Unexpected error: {e}")
+    st.error("An unexpected error occurred. Check logs.")
+```

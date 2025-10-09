@@ -1,0 +1,349 @@
+---
+description: "DataFrame processing, batch operations, and data transformation patterns"
+---
+# DataFrame Processing Patterns
+
+## DataFrameProcessor Class
+
+The `DataFrameProcessor` class in [src/file_manager.py](mdc:src/file_manager.py) is the core data handler.
+
+### Initialization
+```python
+from src.file_manager import DataFrameProcessor
+
+# Initialize with user DataFrame
+df_processor = DataFrameProcessor(user_df)
+
+# Access processed DataFrame
+df = df_processor.processed_df
+```
+
+### Column Operations
+
+**Add or Update Column:**
+```python
+df_processor.add_column(
+    column_name='new_column',
+    values=result_list
+)
+```
+
+**Expand Nested JSON Columns:**
+```python
+# For columns containing JSON/dict objects
+df_processor.expand_column(column_name='structured_data')
+# This creates new columns from nested structure
+```
+
+**Drop Columns:**
+```python
+df_processor.drop_columns(['temp_col1', 'temp_col2'])
+```
+
+## Batch Processing Pattern
+
+### DfBatchesConstructor
+Located in [src/batch_handler.py](mdc:src/batch_handler.py), handles batch operations on DataFrames.
+
+```python
+from src.batch_handler import DfBatchesConstructor
+
+batches_constructor = DfBatchesConstructor(df_processor, session_logger)
+
+# Generator pattern for progress tracking
+for progress in batches_constructor.df_batches_handler(
+    func=processing_function,
+    response_column='result',
+    query_column='input',
+    batch_size=10,
+    **additional_kwargs
+):
+    if progress["df"] is None:
+        # Still processing
+        count = progress["processed_count"]
+        update_progress_bar(count)
+    else:
+        # Batch complete
+        final_df = progress["df"]
+```
+
+### Batch Handler Parameters
+- `func` - Function to apply to each row
+- `response_column` - Column name for results
+- `query_column` - Column containing input data
+- `batch_size` - Number of rows to process (0 = all remaining)
+- `**kwargs` - Additional arguments passed to func
+
+### Processing Function Signature
+```python
+def processing_function(
+    query: str,
+    session_logger: SessionLogger,
+    **kwargs
+) -> str:
+    """
+    Process a single row.
+    
+    Args:
+        query: Value from query_column
+        session_logger: For logging requests
+        **kwargs: Additional parameters
+        
+    Returns:
+        Result to store in response_column
+    """
+    result = perform_operation(query)
+    return result
+```
+
+## Null Handling Pattern
+
+### Process Only Empty Cells
+The batch handler automatically processes only rows where `response_column` is NaN:
+
+```python
+# Get rows to process
+rows_to_process = df[df[response_column].isna()]
+
+# This allows resuming interrupted batches
+# Already processed rows are skipped
+```
+
+### Fill Pattern
+```python
+# Initialize response column if doesn't exist
+if response_column not in df.columns:
+    df[response_column] = pd.NA
+
+# Process and fill
+for index, row in rows_to_process.itertuples():
+    result = process(row.query_column)
+    df.at[index, response_column] = result
+```
+
+## Streamlit DataFrame Sync
+
+### Sync Pattern
+From [src/streamlit_interface.py](mdc:src/streamlit_interface.py):
+
+```python
+def sync_streamlit_processed_df(df_processor: DataFrameProcessor):
+    """Sync DataFrame to session state for persistence across reruns."""
+    st.session_state['df_processor'] = df_processor
+```
+
+Usage after operations:
+```python
+# Perform operation
+df_processor = request_constructor.llm_request_single_column(llm_manager)
+
+# Sync to session state
+sync_streamlit_processed_df(df_processor)
+
+# Display updated DataFrame
+st.dataframe(df_processor.processed_df)
+```
+
+## Data Transformation Patterns
+
+### Apply Function to Column
+```python
+def transform_column(df: pd.DataFrame, column: str, func) -> pd.DataFrame:
+    """Apply transformation function to column."""
+    df[column] = df[column].apply(func)
+    return df
+
+# Usage
+df = transform_column(df, 'text', lambda x: x.lower().strip())
+```
+
+### Conditional Updates
+```python
+# Update based on condition
+mask = df['status'] == 'pending'
+df.loc[mask, 'processed'] = True
+```
+
+### Create Column from Multiple Columns
+```python
+df['full_name'] = df['first_name'] + ' ' + df['last_name']
+df['combined'] = df.apply(
+    lambda row: f"{row['col1']} - {row['col2']}",
+    axis=1
+)
+```
+
+## Data Loading Patterns
+
+### DataLoader Class
+From [src/streamlit_setup.py](mdc:src/streamlit_setup.py):
+
+```python
+data_loader = DataLoader("dataframe", session_logger)
+
+if isinstance(data_loader.user_file, pd.DataFrame) and not data_loader.user_file.empty:
+    user_df = data_loader.user_file
+else:
+    st.warning("Please upload a valid CSV or Excel file")
+```
+
+### File Upload Handling
+```python
+uploaded_file = st.file_uploader("Upload file", type=['csv', 'xlsx', 'xls'])
+
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+```
+
+### Save Processed DataFrame
+```python
+# Save to session logger
+session_logger.save_processed_file(
+    df=df_processor.processed_df,
+    filename='processed_data.csv'
+)
+
+# Download in Streamlit
+csv = df.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="Download CSV",
+    data=csv,
+    file_name='output.csv',
+    mime='text/csv'
+)
+```
+
+## Batch Request Logging
+
+### BatchRequestLogger
+Track batch processing history:
+
+```python
+from src.file_manager import BatchRequestLogger
+
+batch_logger = BatchRequestLogger(user_id, session_id, tool_config)
+
+# Log batch request
+batch_logger.save_batch_request({
+    'batch_id': batch_id,
+    'function': 'llm_request',
+    'query_column': 'search_query',
+    'response_column': 'results',
+    'batch_size': 10,
+    'timestamp': datetime.now().isoformat(),
+    'status': 'processing'
+})
+
+# Update batch status
+batch_logger.update_batch_status(batch_id, 'completed')
+```
+
+## Error Handling in Batch Processing
+
+### Per-Row Error Handling
+```python
+for index, row in df.itertuples():
+    try:
+        result = process_row(row)
+        df.at[index, 'result'] = result
+        df.at[index, 'status'] = 'success'
+    except SkippableError as e:
+        logger.warning(f"Skipped row {index}: {e}")
+        df.at[index, 'status'] = 'skipped'
+        df.at[index, 'error'] = str(e)
+    except StopProcessingError:
+        logger.error("Critical error, stopping batch")
+        break
+```
+
+### Partial Results
+Save progress after each row or small batch:
+
+```python
+# Process in chunks
+chunk_size = 5
+for i in range(0, len(rows_to_process), chunk_size):
+    chunk = rows_to_process[i:i+chunk_size]
+    
+    # Process chunk
+    for row in chunk:
+        process(row)
+    
+    # Save progress
+    df_processor.save_progress()
+```
+
+## Scheduled Batch Jobs
+
+### Batch File Structure
+For scheduler processing (see [scheduler.py](mdc:scheduler.py)):
+
+```python
+from src.batch_handler import DfBatchesConstructor
+from src.dataformats import BatchSummaryPayload
+
+# Create batch job
+batch_data = {
+    'df': df,
+    'function_name': 'google_search',
+    'config': {
+        'query_column': 'search_term',
+        'response_column': 'results',
+        'batch_size': 0  # Process all
+    }
+}
+
+# Save to shared folder for scheduler
+batch_file_path = os.path.join(shared_folder, 'batches', f'{batch_id}.pkl')
+df.to_pickle(batch_file_path)
+```
+
+### Monitor Batch Status
+```python
+# Check batch status
+from src.file_manager import BatchSummaryLogger
+
+summary_logger = BatchSummaryLogger(user_id, tool_config)
+batches = summary_logger.get_user_batches()
+
+for batch in batches:
+    st.write(f"Batch {batch['id']}: {batch['status']}")
+    if batch['status'] == 'completed':
+        # Download result
+        result_df = pd.read_pickle(batch['result_path'])
+```
+
+## Column Validation
+
+### Validate Column Existence
+```python
+def validate_column(df: pd.DataFrame, column: str, column_type: str = "input") -> bool:
+    """Validate column exists and is usable."""
+    if column not in df.columns:
+        st.error(f"{column_type} column '{column}' not found in DataFrame")
+        return False
+    if df[column].empty:
+        st.warning(f"{column_type} column '{column}' is empty")
+        return False
+    return True
+
+# Usage
+if validate_column(df, query_column, "Query"):
+    # Proceed with processing
+    pass
+```
+
+### Type Checking
+```python
+def ensure_string_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Convert column to string type."""
+    df[column] = df[column].astype(str)
+    df[column] = df[column].str.strip()
+    return df
+```

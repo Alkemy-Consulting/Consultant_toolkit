@@ -7,6 +7,11 @@ from src.file_manager import FileLockManager
 from functools import lru_cache
 import re
 import logging.config
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (for local development)
+# This won't override existing environment variables (e.g., from Railway)
+load_dotenv(override=False)
 
 
 def setup_logging():

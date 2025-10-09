@@ -1,0 +1,186 @@
+---
+description: "Docker deployment and Railway configuration"
+---
+# Deployment and Docker Configuration
+
+## Docker Setup
+
+### Dockerfile
+The application uses a Dockerfile for containerization. See [Dockerfile](mdc:Dockerfile).
+
+Key requirements:
+- Python 3.x base image
+- Install system dependencies for text extraction (textract)
+- Install Python packages from [requirements.txt](mdc:requirements.txt)
+- Expose Streamlit default port (8501)
+- Run with `streamlit run Hello.py`
+
+### Environment Variables
+The application expects these environment variables:
+
+**Required for Services:**
+- `OPENAI_API_KEY` - OpenAI API access
+- `GROQ_API_KEY` - Groq LLM access
+- `SERP_API_KEY` - SerpAPI for Google search
+- `OXYLABS_USER` and `OXYLABS_PSW` - OxyLabs scraping service
+- `YOUTUBE_API_KEY` - YouTube Data API
+
+**Optional Configuration:**
+- `LOGS_ROOT_FOLDER` - Override default logs directory (default: `logs`)
+
+### Railway Deployment
+Configuration in [old_railway.json](mdc:old_railway.json) (if present).
+
+To deploy on Railway:
+1. Connect GitHub repository
+2. Set environment variables in Railway dashboard
+3. Railway will auto-detect Dockerfile
+4. Application runs on assigned Railway URL
+
+## Local Development
+
+### Running Locally
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables (optional, can provide via UI)
+export OPENAI_API_KEY="your-key"
+export GROQ_API_KEY="your-key"
+
+# Run application
+streamlit run Hello.py
+```
+
+### Local Configuration
+Create a `.env` file for local development:
+```
+OPENAI_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
+SERP_API_KEY=...
+LOGS_ROOT_FOLDER=logs
+```
+
+The application will load this via `python-dotenv` (see [src/setup.py](mdc:src/setup.py)).
+
+## Scheduler Service
+
+### Background Scheduler
+The [scheduler.py](mdc:scheduler.py) file runs as a separate process for batch job processing.
+
+To run the scheduler:
+```bash
+python scheduler.py
+```
+
+In production (Railway), this should run as a separate worker service.
+
+### Shared Folder Setup
+The scheduler processes files from the shared folder configured in [tool_configs.yaml](mdc:tool_configs.yaml):
+
+```yaml
+shared_folder: shared
+shared_summaries_folder: summaries
+shared_completed_folder: archived
+shared_wip_folder: wip
+scheduler_frequency: 20  # seconds between checks
+max_cuncurrent_jobs: 5
+stuck_file_timeout: 7200  # 2 hours
+```
+
+## Logging Configuration
+
+### Application Logs
+Configured in [src/setup.py](mdc:src/setup.py) `setup_logging()` function:
+
+- Console output (stdout)
+- File output to `app.log`
+- Log format: `"%(asctime)s — %(name)s — %(levelname)s — %(message)s"`
+
+### User Session Logs
+Stored per user in structure:
+```
+logs/
+  {user_id}/
+    files/
+    openai_threads/
+    requests/
+```
+
+## Data Persistence
+
+### File Storage
+All user data stored in filesystem:
+- Uploaded files: `logs/{user_id}/files/`
+- Processing logs: `logs/{user_id}/requests/`
+- Batch jobs: `shared/batches/`
+
+### Volume Mounting
+For Docker/Railway, ensure persistent volume mounted to:
+- `/app/logs` - User data and logs
+- `/app/shared` - Batch processing queue
+
+## Security Considerations
+
+### Authentication
+Configured in [tool_configs.yaml](mdc:tool_configs.yaml):
+```yaml
+require_login: True
+purge_user_data_password: 'changeme'
+```
+
+User credentials in [users.yaml](mdc:users.yaml):
+```yaml
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com
+      name: Admin User
+      password: hashed_password
+```
+
+**Important:** Change default passwords before deployment!
+
+### API Key Storage
+- Never commit API keys to git
+- Use environment variables for production
+- Use `.env` file for local development (add to `.gitignore`)
+- Provide UI for users to input their own keys if needed
+
+### Data Privacy
+From [readme.md](mdc:readme.md):
+> ⚠️ Important: Data is hosted on US servers, and LLM requests share info with OpenAI or Groq. Be mindful of your data!
+
+## Health Checks
+
+### Streamlit Health
+Streamlit provides health endpoint at `/_stcore/health`
+
+### Scheduler Health
+Monitor scheduler logs for processing activity:
+```python
+logger.info("scheduler started")
+logger.info(f"Processing batch {batch_id}")
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Import Errors:**
+- Ensure all dependencies in [requirements.txt](mdc:requirements.txt) are installed
+- Check Python version compatibility
+
+**File Permission Errors:**
+- Ensure logs directory is writable
+- Check file lock timeouts in [src/file_manager.py](mdc:src/file_manager.py)
+
+**API Failures:**
+- Verify API keys are set correctly
+- Check API rate limits and quotas
+- Review request logs in `logs/{user_id}/requests/`
+
+**Scheduler Not Processing:**
+- Verify scheduler is running as separate process
+- Check shared folder permissions
+- Review `stuck_file_timeout` configuration

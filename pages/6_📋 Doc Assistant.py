@@ -46,7 +46,7 @@ if st.session_state["authentication_status"]:
         ))
 
 
-        if st.button("Study the content", disabled=st.session_state['doc_status']['not_chunked'], use_container_width=True):  
+        if st.button("Study the content", disabled=st.session_state['doc_status']['not_chunked'], width='stretch'):  
             st.session_state['chunks_df'] = request_constructor.llm_embed_single_column(llm_manager,config_package={"query_column":"chunk", "response_column":"embedding"})
             session_logger.log_excel(st.session_state['chunks_df'])
             st.session_state['doc_status']['not_studied']=False
@@ -76,7 +76,7 @@ if st.session_state["authentication_status"]:
 
         with st.expander("Full Content Table", expanded=False):
             st.write("Here you can see how your document is chunked and sorted based on your question")
-            st.dataframe(st.session_state['chunks_df'], use_container_width=True, hide_index=False, )
+            st.dataframe(st.session_state['chunks_df'], width='stretch', hide_index=False, )
     
 
 elif st.session_state["authentication_status"] is False:

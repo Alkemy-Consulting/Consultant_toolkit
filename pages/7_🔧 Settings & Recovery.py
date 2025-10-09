@@ -75,14 +75,14 @@ if st.session_state["authentication_status"]:
         selected_logs_folder = st.selectbox('Select a folder', [''] + os.listdir(logs_folder))
 
     # Create the "Prepare the ZIP" button, disabled if no folder is selected
-    if st.button('Prepare the ZIP', type='primary', use_container_width=True, disabled=not selected_logs_folder):
+    if st.button('Prepare the ZIP', type='primary', width='stretch', disabled=not selected_logs_folder):
         zip_file = session_logger.zip_directory(os.path.join(logs_folder, selected_logs_folder))
         st.download_button(
             label="Download",
             data=zip_file,
             file_name=f"{selected_logs_folder}.zip",
             mime="application/zip",
-            use_container_width=True, 
+            width='stretch', 
             type='primary'
         )
     
@@ -91,7 +91,7 @@ if st.session_state["authentication_status"]:
     purge_user_data_password = st.session_state['tool_config'].get('purge_user_data_password')
     password = st.text_input('Provide the password to purge the logs folder', type='password') if purge_user_data_password else None
 
-    if st.button('Purge user data', use_container_width=True):
+    if st.button('Purge user data', width='stretch'):
         if not purge_user_data_password or password == purge_user_data_password:
             session_logger.purge_logs_folder()
             session_logger.purge_shared_files()

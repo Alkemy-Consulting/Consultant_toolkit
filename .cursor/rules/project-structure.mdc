@@ -1,0 +1,88 @@
+---
+alwaysApply: true
+---
+# Consultant Toolkit - Project Structure
+
+## Overview
+This is a Streamlit-based consultant toolkit with multiple AI-powered tools for data processing, analysis, and external API integrations.
+
+## Architecture
+
+### Entry Point
+- [Hello.py](mdc:Hello.py) - Main entry point for the Streamlit app
+- Run with: `streamlit run Hello.py`
+
+### Configuration Files
+- [tool_configs.yaml](mdc:tool_configs.yaml) - Main configuration for services, API keys, logging, and scheduler settings
+- [users.yaml](mdc:users.yaml) - User credentials for authentication (uses streamlit_authenticator)
+- [requirements.txt](mdc:requirements.txt) - Python dependencies
+
+### Core Source Files (`src/`)
+- [src/setup.py](mdc:src/setup.py) - Configuration loading, credential management, and logging setup
+- [src/external_tools.py](mdc:src/external_tools.py) - External API integrations (OpenAI, Groq, SerpAPI, OxyLabs, YouTube)
+- [src/file_manager.py](mdc:src/file_manager.py) - File operations, logging, and data persistence
+- [src/streamlit_interface.py](mdc:src/streamlit_interface.py) - Streamlit UI components and request constructors
+- [src/streamlit_setup.py](mdc:src/streamlit_setup.py) - Page setup, authentication, and common UI elements
+- [src/batch_handler.py](mdc:src/batch_handler.py) - Batch processing logic for DataFrame operations
+- [src/prompts.py](mdc:src/prompts.py) - System message templates for LLM interactions
+- [src/dataformats.py](mdc:src/dataformats.py) - Data models and payload structures
+
+### Pages (`pages/`)
+Each page is a separate Streamlit page accessible from the sidebar:
+- `1_📈 Generative Excel.py` - Bulk operations on CSV/Excel with LLM, Google, Amazon, YouTube APIs
+- `2_🏗️ Deep Extractor.py` - Extract extensive information from few queries
+- `3_⏳ Batches Monitor.py` - Monitor and manage scheduled batch jobs
+- `4_🤖 My Assistants.py` - OpenAI Assistant interface for data analysis
+- `5_🎙️ Audio Transcriber.py` - Audio transcription and summarization
+- `6_📋 Doc Assistant.py` - Document processing with embeddings and Q&A
+- `7_🔧 Settings & Recovery.py` - Session recovery, API key management, logs
+
+### Data Storage
+- `logs/` - User-specific logs, request logs, and session data
+  - `logs/admin/files/` - User uploaded files
+  - `logs/admin/openai_threads/` - OpenAI thread persistence
+  - `logs/admin/requests/` - API request logs
+- `shared/` - Shared folder for batch processing
+  - `shared/batches/` - Active batch jobs
+  - `shared/batches/archived/` - Completed batches
+  - `shared/summaries/` - Batch summaries
+  - `shared/wip/` - Work in progress files
+
+### Background Services
+- [scheduler.py](mdc:scheduler.py) - Background scheduler for batch processing
+
+## Virtual Environment
+- The project has a `.venv` virtual environment at the project root
+- **IMPORTANT**: Always activate the virtual environment before running terminal commands:
+  ```bash
+  source .venv/bin/activate
+  ```
+- This is required for running the scheduler, Python scripts, or any Python-related commands
+- The virtual environment contains all project dependencies from `requirements.txt`
+
+## Key Design Patterns
+
+### Session State Management
+- All pages use `st.session_state` for authentication, user sessions, and data persistence
+- Session logger is initialized in page_setup and stored in session state
+
+### Credential Management
+- `CredentialManager` class handles API keys from environment variables or user input
+- Keys can be provided via env vars (e.g., Railway) or through the UI
+
+### Logging
+- Each module uses Python's logging module: `logger = logging.getLogger(__name__)`
+- Session-specific logs are managed via `SessionLogger` class
+- File locking is used for concurrent access safety
+
+### Error Handling
+- Custom exceptions: `StopProcessingError`, `RetryableError`, `SkippableError`
+- Exponential backoff retry logic for external API calls
+- HTTP error handling with appropriate error categorization
+
+### Data Processing Flow
+1. User uploads file → DataLoader
+2. File processed → DataFrameProcessor
+3. Batch operations → DfBatchesConstructor/DfRequestConstructor
+4. Results stored in DataFrame with progress tracking
+5. Session logs and files persisted in user-specific directories

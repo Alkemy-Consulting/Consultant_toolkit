@@ -1,0 +1,318 @@
+---
+description: "Working with external API integrations (OpenAI, Groq, SerpAPI, OxyLabs, YouTube)"
+---
+# External API Integration Patterns
+
+## Manager Class Pattern
+
+All external API integrations follow a manager pattern defined in [src/external_tools.py](mdc:src/external_tools.py):
+
+```python
+class ServiceManager:
+    def __init__(
+        self,
+        session_logger: SessionLogger,
+        credential_manager: CredentialManager
+    ):
+        self.session_logger = session_logger
+        self.save_request_log = session_logger.save_request_log
+        self.tool_configs = session_logger.tool_config
+        self.credential_manager = credential_manager
+        
+        # Get API key from credential manager
+        api_key = self.credential_manager.get_api_key('service_name')
+        if not api_key:
+            raise StopProcessingError("Service API key required")
+        
+        # Initialize client
+        self.client = ServiceClient(api_key=api_key)
+```
+
+## LLM Integration (OpenAI, Groq)
+
+### LlmManager Pattern
+The `LlmManager` class handles multiple LLM providers:
+
+```python
+llm_manager = LlmManager(session_logger, credential_manager)
+
+# Configure which LLM to use
+llm_manager.set_llm(model='gpt-4o-mini', temperature=0.7, max_tokens=3000)
+
+# Make request
+response = llm_manager.llm_single_request(
+    user_message="Analyze this text",
+    system_message="You are a data analyst"
+)
+```
+
+### Request Logging
+All LLM requests are logged:
+
+```python
+request_log = {
+    'service': self.active_llm_service,
+    'model': self.active_llm,
+    'request': {'messages': messages},
+    'response': response_content,
+    'timestamp': datetime.now().isoformat()
+}
+self.save_request_log(request_log)
+```
+
+### Error Handling for LLMs
+```python
+try:
+    response = client.chat.completions.create(...)
+except openai.RateLimitError:
+    raise RetryableError("Rate limit exceeded")
+except openai.AuthenticationError:
+    raise StopProcessingError("Invalid API key")
+except openai.APIError as e:
+    raise RetryableError(f"API error: {e}")
+```
+
+## SerpAPI Integration
+
+### SerpApiManager
+Handles Google search results:
+
+```python
+serpapi_manager = SerpApiManager(session_logger, credential_manager)
+
+# Get organic search results
+results = serpapi_manager.get_google_organic_results(
+    query="search term",
+    num_results=10,
+    location="United States"
+)
+
+# Get product reviews
+reviews = serpapi_manager.get_product_reviews(
+    product_id="amazon_product_id",
+    max_reviews=50
+)
+```
+
+### Pagination with SerpAPI
+Use `universal_paginator` for paginated results:
+
+```python
+all_results = universal_paginator(
+    api_call_func=lambda page: serpapi_manager.search(page=page),
+    pagination_key='page',
+    results_key='organic_results',
+    max_results=100
+)
+```
+
+## OxyLabs Integration
+
+### OxyLabsManager
+Handles web scraping and e-commerce data:
+
+```python
+oxylabs_manager = OxyLabsManager(session_logger, credential_manager)
+
+# Amazon product scraping
+product_data = oxylabs_manager.scrape_amazon_product(
+    asin="B08N5WRWNW",
+    domain="amazon.com"
+)
+
+# Amazon reviews
+reviews = oxylabs_manager.scrape_amazon_reviews(
+    asin="B08N5WRWNW",
+    max_pages=5
+)
+
+# Universal scraper for any URL
+content = oxylabs_manager.universal_scraper(
+    url="https://example.com",
+    render_js=True
+)
+```
+
+### Request Structure
+OxyLabs uses POST requests with JSON payload:
+
+```python
+payload = {
+    'source': 'amazon_product',
+    'domain': 'com',
+    'query': asin,
+    'parse': True
+}
+
+response = requests.post(
+    'https://realtime.oxylabs.io/v1/queries',
+    auth=(username, password),
+    json=payload
+)
+```
+
+## OpenAI Advanced Features
+
+### Assistant API
+Use `openai_advanced_uses` class for assistants:
+
+```python
+openai_manager = openai_advanced_uses(session_logger, credential_manager)
+
+# Create assistant
+assistant = openai_manager.create_assistant_from_df(
+    df=user_df,
+    assistant_name="Data Analyst",
+    instructions="Analyze this dataset"
+)
+
+# Create thread and run
+thread_id = openai_manager.create_thread()
+response = openai_manager.run_assistant(
+    thread_id=thread_id,
+    assistant_id=assistant.id,
+    message="What are the key insights?"
+)
+```
+
+### File Handling
+```python
+# Upload file to OpenAI
+file = openai_manager.openai_upload_file(
+    file_path="data.csv",
+    purpose="assistants"
+)
+
+# Download file from OpenAI
+content = openai_manager.openai_download_file(file_id)
+```
+
+### Streaming Responses
+Handle streaming for real-time output:
+
+```python
+with openai_manager.openai_client.beta.threads.runs.stream(
+    thread_id=thread_id,
+    assistant_id=assistant_id
+) as stream:
+    for event in stream:
+        if isinstance(event, ThreadMessageDelta):
+            # Handle message chunk
+            process_chunk(event)
+```
+
+## YouTube Transcript API
+
+### AudioTranscribe Class
+```python
+audio_transcriber = AudioTranscribe(session_logger, credential_manager)
+
+# Get YouTube transcript
+transcript = audio_transcriber.get_youtube_transcript(
+    video_id="dQw4w9WgXcQ",
+    language="en"
+)
+
+# Transcribe audio file
+result = audio_transcriber.transcribe_audio(
+    audio_file_path="recording.mp3",
+    model="whisper-1"
+)
+```
+
+### Error Handling
+```python
+from youtube_transcript_api import TranscriptsDisabled, NoTranscriptFound
+
+try:
+    transcript = YouTubeTranscriptApi.get_transcript(video_id)
+except TranscriptsDisabled:
+    raise SkippableError("Transcripts disabled for this video")
+except NoTranscriptFound:
+    raise SkippableError("No transcript available")
+```
+
+## Web Scraping
+
+### WebScraper Class
+```python
+web_scraper = WebScraper(session_logger)
+
+# Scrape URL
+content = web_scraper.scrape_url(
+    url="https://example.com",
+    timeout=30
+)
+
+# Parse with BeautifulSoup
+soup = BeautifulSoup(content, 'html.parser')
+text = soup.get_text()
+```
+
+## Rate Limiting
+
+### Retry Logic
+All external API calls should use exponential backoff:
+
+```python
+result = _exponential_backoff(
+    func=lambda: api_call(),
+    max_retries=3,
+    base_delay=1,
+    exc_types=(RetryableError,)
+)
+```
+
+### HTTP Error Categorization
+Use `_handle_http_errors()` consistently:
+
+```python
+response = requests.post(url, json=payload)
+_handle_http_errors(response)  # Raises appropriate exception
+data = response.json()
+```
+
+## Configuration from YAML
+
+External services configured in [tool_configs.yaml](mdc:tool_configs.yaml):
+
+```yaml
+openai:
+  use: True
+  key: OPENAI_API_KEY
+  available_models:
+    - gpt-4o-mini
+    - gpt-4o
+  max_token: 3000
+```
+
+Access via CredentialManager:
+
+```python
+api_key = credential_manager.get_api_key('openai')
+models = tool_configs['openai']['available_models']
+max_tokens = tool_configs['openai']['max_token']
+```
+
+## Batch Processing Pattern
+
+For bulk API operations:
+
+```python
+def bulk_process(items: List[str]) -> List[dict]:
+    results = []
+    for item in items:
+        try:
+            result = _exponential_backoff(
+                func=lambda: api_call(item),
+                exc_types=(RetryableError,)
+            )
+            results.append({'item': item, 'result': result, 'status': 'success'})
+        except SkippableError as e:
+            logger.warning(f"Skipped {item}: {e}")
+            results.append({'item': item, 'error': str(e), 'status': 'skipped'})
+        except StopProcessingError:
+            logger.error("Critical error, stopping batch")
+            break
+    return results
+```

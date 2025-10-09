@@ -67,14 +67,14 @@ if st.session_state["authentication_status"]:
         st.write("## Preview of your processed file")
         preview_df = df_processor.processed_df.head(100).copy()  # Only copy first 100 rows
         preview_df = preview_df.astype(str).fillna('') 
-        st.dataframe(preview_df, use_container_width=True, hide_index=True,)
+        st.dataframe(preview_df, width='stretch', hide_index=True,)
 
         st.session_state['processed_df'] = df_processor.processed_df.astype(str).fillna('')
 
         def get_excel():
             return st.session_state["session_logger"].to_excel(df_processor.processed_df)
 
-        if st.button("prepare file to download",use_container_width=True):
+        if st.button("prepare file to download",width='stretch'):
             excel_file = st.session_state["session_logger"].to_excel(df_processor.processed_df)
 
             st.download_button(
@@ -82,7 +82,7 @@ if st.session_state["authentication_status"]:
                 data=excel_file,
                 file_name="processed_data.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width='stretch',
                 type="primary",
                 key="download_button_footer"
             )

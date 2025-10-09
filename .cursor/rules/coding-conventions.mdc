@@ -1,0 +1,126 @@
+---
+alwaysApply: true
+---
+# Coding Conventions
+
+## General Python Style
+
+### Imports
+- Standard library imports first
+- Third-party imports second
+- Local application imports last
+- Use explicit imports, avoid wildcards
+- Logger should be defined at module level: `logger = logging.getLogger(__name__)`
+
+Example from [src/external_tools.py](mdc:src/external_tools.py):
+```python
+import logging
+logger = logging.getLogger(__name__)
+from src.file_manager import SessionLogger, OpenaiThreadLogger
+import openai
+import groq
+```
+
+### Class Naming
+- Use PascalCase for class names: `DataFrameProcessor`, `LlmManager`, `CredentialManager`
+- Manager classes for external services: `LlmManager`, `SerpApiManager`, `OxyLabsManager`
+- Processor classes for data operations: `DataFrameProcessor`
+- Logger classes for persistence: `SessionLogger`, `BatchRequestLogger`
+
+### Method Naming
+- Use snake_case for methods and functions
+- Private methods start with underscore: `_exponential_backoff`, `_handle_http_errors`
+- Descriptive names that indicate purpose: `secure_write`, `save_request_log`
+
+### Variable Naming
+- Use snake_case for variables: `session_logger`, `credential_manager`, `tool_config`
+- DataFrame variables: `df`, `user_df`, `processed_df`
+- Config dictionaries: `page_config`, `tool_config`
+
+### Documentation
+- Use docstrings for complex functions
+- Include parameter descriptions and return types when helpful
+- Example from [src/external_tools.py](mdc:src/external_tools.py):
+```python
+def _exponential_backoff(func, max_retries=3, base_delay=1, exc_types=(Exception,)):
+    """Execute *func* with retries using exponential backoff.
+
+    Parameters
+    ----------
+    func : callable
+        Function to execute.
+    max_retries : int, optional
+        Maximum number of attempts. Default 3.
+    """
+```
+
+## Configuration Management
+
+### YAML Configuration
+- Configuration loaded from [tool_configs.yaml](mdc:tool_configs.yaml)
+- Use `load_config()` function from [src/setup.py](mdc:src/setup.py)
+- Environment variable substitution: `$VARIABLE_NAME` in YAML gets replaced
+- Cached with `@lru_cache(maxsize=1)` for performance
+
+### API Keys
+- Never hardcode API keys
+- Check environment variables first
+- Fall back to user input via `CredentialManager`
+- Store in session state when user-provided
+
+## Error Handling Conventions
+
+### Custom Exceptions
+Define and use custom exceptions for different error scenarios:
+- `StopProcessingError` - Authentication failures, critical errors that should halt processing
+- `RetryableError` - Temporary issues (rate limits, server errors) that should retry
+- `SkippableError` - Non-critical errors that can be skipped (404s, bad requests)
+
+### Try-Except Patterns
+```python
+try:
+    result = function()
+except StopProcessingError:
+    raise  # Critical errors bubble up
+except SkippableError as e:
+    logger.warning(f"Skipping: {e}")
+    return None
+except RetryableError as e:
+    # Handled by exponential backoff wrapper
+    raise
+```
+
+### Logging Levels
+- `logger.error()` - Critical failures
+- `logger.warning()` - Recoverable issues, skipped items
+- `logger.info()` - Important state changes, completions
+- `logger.debug()` - Detailed debugging information
+
+## File Operations
+
+### File Locking
+- Use `FileLockManager` for concurrent file access
+- All file writes/reads should use lock context manager
+- Example from [src/file_manager.py](mdc:src/file_manager.py):
+```python
+with FileLockManager(file_path).locked():
+    # File operations here
+```
+
+### Path Handling
+- Use `os.path.join()` for path construction
+- Create directories with `os.makedirs(path, exist_ok=True)`
+- Check file existence with `os.path.exists()`
+
+## Session Management
+
+### Session State
+- Initialize session state in `page_setup()` from [src/streamlit_setup.py](mdc:src/streamlit_setup.py)
+- Always check authentication: `if st.session_state["authentication_status"]:`
+- Store session logger: `st.session_state["session_logger"]`
+- Store credential manager: `st.session_state["credential_manager"]`
+
+### User Context
+- Every user operation should have session context
+- Session ID generated per session for tracking
+- User ID from authentication

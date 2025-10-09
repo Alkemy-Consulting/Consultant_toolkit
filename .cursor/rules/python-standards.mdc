@@ -1,0 +1,314 @@
+---
+globs: *.py
+---
+# Python Coding Standards
+
+## Type Hints
+Use type hints for function parameters and return values:
+
+```python
+from typing import Dict, List, Optional, Union, Any, Tuple
+
+def process_data(
+    data: pd.DataFrame,
+    columns: List[str],
+    config: Optional[Dict[str, Any]] = None
+) -> Tuple[pd.DataFrame, int]:
+    """Process DataFrame and return result with count."""
+    # Implementation
+    return processed_df, count
+```
+
+## Function Design
+
+### Single Responsibility
+Functions should do one thing well:
+
+```python
+# Good - single purpose
+def extract_column_data(df: pd.DataFrame, column: str) -> List[str]:
+    return df[column].tolist()
+
+# Avoid - multiple responsibilities
+def extract_and_process_and_save_column(df, column, output_path):
+    # Too many responsibilities
+    pass
+```
+
+### Parameter Defaults
+Use sensible defaults for optional parameters:
+
+```python
+def paginate_results(
+    items: List[Any],
+    page_size: int = 10,
+    max_pages: Optional[int] = None
+) -> List[List[Any]]:
+    """Paginate items into chunks."""
+    pass
+```
+
+### Keyword Arguments
+Use keyword arguments for clarity when calling functions:
+
+```python
+# Good
+result = process_batch(
+    df=user_df,
+    query_column='search_query',
+    batch_size=10,
+    response_column='results'
+)
+
+# Avoid positional args when many parameters
+result = process_batch(user_df, 'search_query', 10, 'results')
+```
+
+## Data Validation
+
+### Input Validation
+Validate inputs at function boundaries:
+
+```python
+def process_column(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' not found in DataFrame")
+    if df[column].empty:
+        raise ValueError(f"Column '{column}' is empty")
+    return df[column]
+```
+
+### Environment Variables
+Check for required environment variables:
+
+```python
+api_key = os.environ.get('OPENAI_API_KEY')
+if not api_key:
+    raise StopProcessingError("OPENAI_API_KEY environment variable is required")
+```
+
+## Class Design
+
+### Constructor Pattern
+Initialize dependencies in `__init__`:
+
+```python
+class LlmManager:
+    def __init__(
+        self,
+        session_logger: SessionLogger,
+        credential_manager: CredentialManager
+    ):
+        self.session_logger = session_logger
+        self.credential_manager = credential_manager
+        self.tool_configs = session_logger.tool_config
+        
+        # Initialize clients
+        self._initialize_clients()
+```
+
+### Private Methods
+Use underscore prefix for internal methods:
+
+```python
+class DataProcessor:
+    def process(self, data):
+        """Public interface"""
+        validated = self._validate(data)
+        return self._transform(validated)
+    
+    def _validate(self, data):
+        """Private validation method"""
+        pass
+    
+    def _transform(self, data):
+        """Private transformation method"""
+        pass
+```
+
+### Context Managers
+Use context managers for resource management:
+
+```python
+class CredentialManager:
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+    
+    def close(self):
+        # Cleanup
+        pass
+
+# Usage
+with CredentialManager(config) as cred_manager:
+    # Use credential manager
+    pass
+```
+
+## DataFrame Operations
+
+### Safe Column Access
+Check column existence before access:
+
+```python
+if column_name in df.columns:
+    values = df[column_name]
+else:
+    logger.warning(f"Column {column_name} not found")
+    values = None
+```
+
+### Handling NaN Values
+Be explicit about NaN handling:
+
+```python
+# Filter out rows with NaN in specific column
+df_filtered = df[df[column].notna()]
+
+# Fill NaN with default value
+df[column] = df[column].fillna('')
+
+# Check for NaN
+if pd.isna(value):
+    # Handle NaN case
+    pass
+```
+
+### Iterating DataFrames
+Use `itertuples()` for performance:
+
+```python
+# Good - faster
+for row in df.itertuples(index=True):
+    process(row.column_name, row.Index)
+
+# Slower - avoid for large datasets
+for index, row in df.iterrows():
+    process(row['column_name'], index)
+```
+
+## File Operations
+
+### Path Construction
+Use `os.path.join()` for cross-platform compatibility:
+
+```python
+file_path = os.path.join(base_dir, user_id, 'files', filename)
+```
+
+### Directory Creation
+Use `exist_ok=True` to avoid errors:
+
+```python
+os.makedirs(output_dir, exist_ok=True)
+```
+
+### File Reading with Encoding
+Always specify encoding for text files:
+
+```python
+with open(file_path, 'r', encoding='utf-8') as f:
+    content = f.read()
+```
+
+## JSON Handling
+
+### Safe JSON Parsing
+Handle JSON errors gracefully:
+
+```python
+try:
+    data = json.loads(json_string)
+except json.JSONDecodeError as e:
+    logger.error(f"Invalid JSON: {e}")
+    data = {}
+```
+
+### JSON Serialization
+Use proper formatting for readability:
+
+```python
+# Pretty print JSON
+json.dumps(data, indent=2, ensure_ascii=False)
+
+# Compact JSON for storage
+json.dumps(data, separators=(',', ':'))
+```
+
+## String Handling
+
+### f-strings
+Use f-strings for string formatting:
+
+```python
+# Good
+message = f"Processing {count} items for user {user_id}"
+
+# Avoid older formats
+message = "Processing {} items for user {}".format(count, user_id)
+message = "Processing %s items for user %s" % (count, user_id)
+```
+
+### Regular Expressions
+Compile regex patterns for reuse:
+
+```python
+import re
+
+# Module level constant
+PATTERN = re.compile(r'\$([A-Za-z0-9_]+)')
+
+def replace_vars(text: str) -> str:
+    return PATTERN.sub(replace_func, text)
+```
+
+## List Comprehensions
+
+### Prefer Comprehensions for Simple Operations
+```python
+# Good - readable and fast
+squares = [x**2 for x in range(10)]
+filtered = [x for x in items if x.is_valid()]
+
+# Avoid for complex logic
+# Instead use explicit loop for clarity
+```
+
+### Generator Expressions for Large Data
+```python
+# Memory efficient for large datasets
+total = sum(x**2 for x in large_list)
+```
+
+## Constants
+
+### Module-Level Constants
+Define constants at module level in UPPER_CASE:
+
+```python
+MAX_RETRIES = 3
+DEFAULT_TIMEOUT = 30
+API_BASE_URL = "https://api.example.com"
+```
+
+## Caching
+
+### LRU Cache for Expensive Operations
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def expensive_calculation(param: str) -> int:
+    # Expensive operation
+    return result
+```
+
+Use for configuration loading as in [src/setup.py](mdc:src/setup.py):
+```python
+@lru_cache(maxsize=1)
+def load_config(file_name):
+    # Load and parse config once
+    return config
+```

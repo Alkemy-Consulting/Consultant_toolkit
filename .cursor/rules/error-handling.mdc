@@ -1,0 +1,213 @@
+---
+alwaysApply: true
+---
+# Error Handling and Logging
+
+## Custom Exception Hierarchy
+
+Define custom exceptions at module level in [src/external_tools.py](mdc:src/external_tools.py):
+
+```python
+class RetryableError(Exception):
+    """Temporary errors that should trigger retry logic (rate limits, 5xx errors)"""
+    pass
+
+class StopProcessingError(Exception):
+    """Critical errors that should halt processing (auth failures, missing credentials)"""
+    pass
+
+class SkippableError(Exception):
+    """Non-critical errors that can be logged and skipped (404s, invalid input)"""
+    pass
+```
+
+## Exponential Backoff Pattern
+
+Use the `_exponential_backoff` wrapper for retryable operations:
+
+```python
+def _exponential_backoff(func, max_retries=3, base_delay=1, exc_types=(Exception,)):
+    """Execute *func* with retries using exponential backoff."""
+    delay = base_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func()
+        except exc_types as e:
+            if attempt == max_retries:
+                raise
+            logger.warning(f"Attempt {attempt} failed with {e}. Retrying in {delay}s")
+            time.sleep(delay)
+            delay *= 2
+```
+
+Usage:
+```python
+result = _exponential_backoff(
+    lambda: api_call(),
+    max_retries=3,
+    exc_types=(RetryableError,)
+)
+```
+
+## HTTP Error Handling
+
+Use `_handle_http_errors()` to categorize HTTP responses:
+
+```python
+def _handle_http_errors(response):
+    """Raise appropriate exceptions based on HTTP status."""
+    if response.status_code in (401, 403):
+        raise StopProcessingError(f"Authentication failed: {response.text}")
+    if response.status_code == 404:
+        raise SkippableError(f"Resource not found: {response.text}")
+    if response.status_code == 429 or response.status_code >= 500:
+        raise RetryableError(f"Temporary server issue ({response.status_code}): {response.text}")
+    if response.status_code >= 400:
+        raise SkippableError(f"Bad request ({response.status_code}): {response.text}")
+```
+
+## Logging Best Practices
+
+### Logger Initialization
+Every module should have its own logger:
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+### Logging Levels
+
+**ERROR** - Critical failures that prevent operation:
+```python
+logger.error(f"Failed to connect to API: {error}")
+logger.error(f"Missing required configuration: {key}")
+```
+
+**WARNING** - Recoverable issues, skipped items:
+```python
+logger.warning(f"Skipping row {i} due to: {error}")
+logger.warning(f"Rate limit approaching, slowing down")
+```
+
+**INFO** - Important state changes, operation completion:
+```python
+logger.info(f"Processing batch {batch_id} started")
+logger.info(f"Successfully processed {count} items")
+```
+
+**DEBUG** - Detailed debugging (file locks, retries):
+```python
+logger.debug(f"Lock acquired on {file_path}")
+logger.debug(f"Attempt {attempt} succeeded")
+```
+
+### Structured Logging
+Include context in log messages:
+```python
+logger.info(f"User {user_id} started session {session_id}")
+logger.error(f"API call failed for query '{query}': {error}")
+```
+
+## Session Logging
+
+### Request Logging
+Use `SessionLogger.save_request_log()` for API calls:
+
+```python
+session_logger.save_request_log({
+    'service': 'openai',
+    'endpoint': '/chat/completions',
+    'request': request_data,
+    'response': response_data,
+    'timestamp': datetime.now().isoformat(),
+    'status': 'success'
+})
+```
+
+### Batch Logging
+Use specialized loggers for batch operations:
+```python
+batch_request_logger = BatchRequestLogger(user_id, session_id, tool_config)
+batch_request_logger.save_batch_request(batch_data)
+```
+
+## Error Recovery Patterns
+
+### Graceful Degradation
+```python
+try:
+    result = call_primary_service()
+except StopProcessingError:
+    logger.error("Primary service failed critically")
+    result = call_fallback_service()
+```
+
+### Skip and Continue
+```python
+for item in items:
+    try:
+        process(item)
+    except SkippableError as e:
+        logger.warning(f"Skipping {item}: {e}")
+        continue
+    except StopProcessingError:
+        logger.error("Critical error, stopping batch")
+        break
+```
+
+### Cleanup on Error
+```python
+try:
+    temp_file = create_temp_file()
+    process_file(temp_file)
+except Exception as e:
+    logger.error(f"Processing failed: {e}")
+    raise
+finally:
+    if os.path.exists(temp_file):
+        os.remove(temp_file)
+```
+
+## User-Facing Error Messages
+
+### Streamlit Error Display
+Convert technical errors to user-friendly messages:
+
+```python
+try:
+    result = process()
+except StopProcessingError as e:
+    st.error(f"⚠️ Unable to proceed: {str(e)}")
+    st.info("Please check your API keys in Settings")
+except SkippableError as e:
+    st.warning(f"Some items were skipped: {str(e)}")
+except Exception as e:
+    logger.exception("Unexpected error occurred")
+    st.error("An unexpected error occurred. Please check the logs.")
+    st.code(str(e))  # Show technical details in code block
+```
+
+### Validation Errors
+Catch validation errors early:
+```python
+if not api_key:
+    raise StopProcessingError("OpenAI API key is required")
+if not query_column in df.columns:
+    raise SkippableError(f"Column {query_column} not found in DataFrame")
+```
+
+## File Operation Safety
+
+### Lock-Based Error Handling
+```python
+try:
+    with FileLockManager(file_path).locked():
+        # File operations
+        pass
+except TimeoutError:
+    logger.error(f"Could not acquire lock on {file_path}")
+    raise StopProcessingError("File is locked by another process")
+except Exception as e:
+    logger.error(f"File operation failed: {e}")
+    raise
+```
