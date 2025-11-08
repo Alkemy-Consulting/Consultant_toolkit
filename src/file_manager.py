@@ -750,7 +750,7 @@ class BatchSummaryLogger(FolderSetupMixin):
         if status == "PENDING":
             summary_payload.schedule_time = datetime.now().isoformat()
             summary_payload.filename = filename
-            update_fields.extend(['schedule_time', 'filename'])
+            update_fields.extend(['schedule_time', 'filename', 'kwargs'])
         elif status == "WIP":
             summary_payload.start_time = datetime.now().isoformat()
             summary_payload.batch_size = total_rows
@@ -772,6 +772,10 @@ class BatchSummaryLogger(FolderSetupMixin):
         )
 
         def update_function(df, update_data, update_fields):
+            # Serialize kwargs to JSON string for CSV storage
+            if 'kwargs' in update_data and update_data['kwargs'] is not None:
+                update_data['kwargs'] = json.dumps(update_data['kwargs'])
+            
             new_row = pd.DataFrame([update_data])
             if 'batch_id' in df.columns and df['batch_id'].isin([update_data['batch_id']]).any():
                 # Update only specific fields for existing rows

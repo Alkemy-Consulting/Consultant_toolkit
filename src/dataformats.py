@@ -46,6 +46,7 @@ class BatchSummaryPayload:
     input_file: str
     query_column: str
     response_column: str
+    kwargs: Dict[str, Any] = None
     filename: str = ""
     schedule_time: str = ""    
     start_time: str = ""
@@ -66,6 +67,7 @@ class BatchSummaryPayload:
             input_file=payload.input_file,
             query_column=payload.query_column,
             response_column=payload.response_column,
+            kwargs=payload.kwargs,
             status=status
         )
     #I should add a calculated column for the time it takes to process the batch

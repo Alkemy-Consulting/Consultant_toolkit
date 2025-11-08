@@ -832,6 +832,7 @@ class streamlit_batches_status():
 
 
     def update_batches_df(self):
+        import json
 
         summary_df = self.batch_request_logger.load_batches_summary()
         self.batches_df = summary_df
@@ -846,6 +847,20 @@ class streamlit_batches_status():
                     self.batches_df[column_name] = pd.to_datetime(self.batches_df[column_name])
                 except Exception as e:
                     st.warning(f"Failed to convert {column_name} to datetime: {str(e)}")
+            
+            # Deserialize kwargs from JSON string
+            if 'kwargs' in self.batches_df.columns:
+                def safe_json_loads(val):
+                    if pd.isna(val) or val == '':
+                        return {}
+                    try:
+                        if isinstance(val, str):
+                            return json.loads(val)
+                        return val
+                    except (json.JSONDecodeError, TypeError):
+                        return {}
+                
+                self.batches_df['kwargs'] = self.batches_df['kwargs'].apply(safe_json_loads)
 
         if not self.batches_df.empty:
             self.completed_batches = self.batches_df[self.batches_df['status'] == 'COMPLETED'] 
@@ -863,13 +878,15 @@ class streamlit_batches_status():
         
         self.display_batches_recap()
         self.display_batches_data()
-        tabs = st.tabs(["Check Progress", "Download Data", "Stop Batches"])
-        with tabs[1]: 
-            self.download_data_interface()
-        with tabs[2]:
-            self.stop_batch_interface()
+        tabs = st.tabs(["Check Progress", "Batch Details", "Download Data", "Stop Batches"])
         with tabs[0]:
             self.display_wip_batches_progress()
+        with tabs[1]:
+            self.display_batch_details()
+        with tabs[2]: 
+            self.download_data_interface()
+        with tabs[3]:
+            self.stop_batch_interface()
 
 
     def display_batches_recap(self):
@@ -905,6 +922,95 @@ class streamlit_batches_status():
                 st.write(f"Progress for {batch['batch_id']} on file {batch['input_file']}: {progress}%")
                 st.progress(progress / 100)  
     
+    def display_batch_details(self):
+        """Display detailed information about a selected batch including kwargs."""
+        st.write("### Batch Details")
+        st.write("Select a batch to view its configuration and parameters:")
+        
+        if self.batches_df.empty:
+            st.info("No batches available")
+            return
+        
+        # Select batch
+        batch_ids = self.batches_df['batch_id'].tolist()
+        default_batch_id = st.session_state.get('detail_batch_id', batch_ids[0])
+        
+        if default_batch_id not in batch_ids:
+            default_batch_id = batch_ids[0]
+        
+        selected_batch_id = st.selectbox(
+            "Select a batch:",
+            options=batch_ids,
+            index=batch_ids.index(default_batch_id),
+            key='detail_batch_id'
+        )
+        
+        if selected_batch_id:
+            selected_batch = self.batches_df[self.batches_df['batch_id'] == selected_batch_id].iloc[0]
+            
+            # Display basic batch information
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Status", selected_batch['status'])
+            with col2:
+                st.metric("Function", selected_batch['function'])
+            with col3:
+                st.metric("Batch Size", selected_batch.get('batch_size', 'N/A'))
+            
+            # Display file and column information
+            st.write("#### Input Configuration")
+            config_col1, config_col2 = st.columns(2)
+            with config_col1:
+                st.write(f"**Input File:** {selected_batch['input_file']}")
+                st.write(f"**Query Column:** {selected_batch['query_column']}")
+            with config_col2:
+                st.write(f"**Session ID:** {selected_batch['session_id']}")
+                st.write(f"**Response Column:** {selected_batch['response_column']}")
+            
+            # Display kwargs parameters
+            st.write("#### Request Parameters")
+            if 'kwargs' in selected_batch and selected_batch['kwargs']:
+                kwargs_dict = selected_batch['kwargs']
+                
+                # Special handling for LLM prompt
+                if 'sys_msg' in kwargs_dict:
+                    with st.expander("📝 LLM System Prompt", expanded=True):
+                        st.code(
+                            kwargs_dict['sys_msg'],
+                            language=None,
+                            line_numbers=False
+                        )
+                    
+                    # Display other kwargs excluding sys_msg
+                    other_kwargs = {k: v for k, v in kwargs_dict.items() if k != 'sys_msg'}
+                else:
+                    other_kwargs = kwargs_dict
+                
+                # Display remaining kwargs as key-value pairs
+                if other_kwargs:
+                    st.write("**Other Parameters:**")
+                    for key, value in other_kwargs.items():
+                        # Format the key nicely
+                        formatted_key = key.replace('_', ' ').title()
+                        st.write(f"- **{formatted_key}:** {value}")
+            else:
+                st.info("No additional parameters for this batch")
+            
+            # Display timing information if available
+            st.write("#### Timing Information")
+            timing_col1, timing_col2, timing_col3 = st.columns(3)
+            with timing_col1:
+                schedule_time = selected_batch.get('schedule_time')
+                if pd.notna(schedule_time):
+                    st.write(f"**Scheduled:** {schedule_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            with timing_col2:
+                start_time = selected_batch.get('start_time')
+                if pd.notna(start_time):
+                    st.write(f"**Started:** {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            with timing_col3:
+                end_time = selected_batch.get('end_time')
+                if pd.notna(end_time):
+                    st.write(f"**Ended:** {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 
