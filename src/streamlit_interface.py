@@ -1094,13 +1094,17 @@ class streamlit_batches_status():
                     selected_filename = None
                 
                 if selected_filename:
-                    selected_row = stoppable_batches[stoppable_batches['filename'] == selected_filename].iloc[0]
-                    if st.button("Stop batch", width='stretch'):
-                        try:    
-                            self.batch_summary_logger.post_stop_request(selected_row['user_id'], selected_row['batch_id'])
-                            st.success(f"Stop request sent for batch: {selected_filename}")
-                        except ValueError as e:
-                            st.error(e)
+                    filtered_batches = stoppable_batches[stoppable_batches['filename'] == selected_filename]
+                    if filtered_batches.empty:
+                        st.warning("Selected batch is no longer available. Please refresh the page.")
+                    else:
+                        selected_row = filtered_batches.iloc[0]
+                        if st.button("Stop batch", width='stretch'):
+                            try:    
+                                self.batch_summary_logger.post_stop_request(selected_row['user_id'], selected_row['batch_id'])
+                                st.success(f"Stop request sent for batch: {selected_filename}")
+                            except ValueError as e:
+                                st.error(e)
             else:
                 st.info("No batches available to stop.")
         else:
