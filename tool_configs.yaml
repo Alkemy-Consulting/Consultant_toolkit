@@ -30,7 +30,7 @@ stuck_file_timeout: 7200
 ## this key will be searched as env variable, if not found will be required to the user
 
 ## LLMs
-default_llm: gpt-4o-mini
+default_llm: gpt-5-nano
 
 groq:
   use: True
@@ -50,6 +50,8 @@ openai:
     - gpt-4o
     - gpt-4.1-mini
     - gpt-5.2
+    - gpt-5-mini
+    - gpt-5-nano
   max_token: 3000
 
 
