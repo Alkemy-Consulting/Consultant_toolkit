@@ -49,7 +49,7 @@ openai:
     - gpt-4o-mini
     - gpt-4o
     - gpt-4.1-mini
-    - gpt-5.2-instant
+    - gpt-5.2
   max_token: 3000
 
 
