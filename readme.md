@@ -73,4 +73,4 @@ Here you can process any text document (word, txt, pdf) in order to quickly extr
 
 ## 🔧 Settings & Recovery
 Here you can download logs from any session. Partially executed files and entire logs of any api call is available to dowload from here in case needed.
-You can also check input API keys if your webmaster have not set them up for you and few other configurations
+You can also check input API keys if your webmaster have not set them up for you and few other configurations 
