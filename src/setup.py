@@ -7,6 +7,7 @@ from src.file_manager import FileLockManager
 from functools import lru_cache
 import re
 import logging.config
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (for local development)
@@ -18,12 +19,21 @@ def setup_logging():
     # Define a log format
     log_format = "%(asctime)s — %(name)s — %(levelname)s — %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
+    max_log_file_size = 5 * 1024 * 1024  # 5 MB
+    backup_files_count = 3
+
+    rotating_file_handler = RotatingFileHandler(
+        "app.log",
+        maxBytes=max_log_file_size,
+        backupCount=backup_files_count
+    )
+
     # Configure the root logger
     logging.basicConfig(level=logging.INFO,  # Set the base level to DEBUG
                         format=log_format,   # Apply the log format
                         handlers=[
                             logging.StreamHandler(),  # Output to the console
-                            logging.FileHandler("app.log")  # Save logs to a file
+                            rotating_file_handler  # Save logs to a rotating file
                         ])
     
 

@@ -5,6 +5,7 @@ from src.dataformats import BatchSummaryPayload, BatchRequestPayload
 import pandas as pd
 import json
 import os
+import errno
 from datetime import datetime
 import uuid
 import zipfile
@@ -442,6 +443,7 @@ class SessionLogger(FolderSetupMixin) :
         self.session_id = datetime.now().strftime('%y%m%d') +"_"+ str(uuid.uuid4())[:6]
         self.file_name = "default"
         self.tool_config = tool_config
+        self._session_files_root_override = None
 
         self.setup_user_folders(self.tool_config, self.user_id)
         self.setup_shared_folders(self.tool_config)
@@ -453,15 +455,112 @@ class SessionLogger(FolderSetupMixin) :
     def set_file_name(self, file_name: str):
         self.file_name = file_name 
 
+    def _is_no_space_error(self, error):
+        return isinstance(error, OSError) and getattr(error, "errno", None) == errno.ENOSPC
+
+    def _active_files_root(self):
+        return self._session_files_root_override or self.files_folder
+
+    def _cleanup_old_session_folders(self, keep_recent=20, max_age_hours=168):
+        """
+        Remove old session folders for the current user to recover storage.
+        By default, only folders older than 7 days are considered removable.
+        """
+        if keep_recent < 1:
+            keep_recent = 1
+
+        if not os.path.isdir(self.files_folder):
+            return 0
+
+        session_dirs = []
+        now = time.time()
+        for folder_name in os.listdir(self.files_folder):
+            folder_path = os.path.join(self.files_folder, folder_name)
+            if os.path.isdir(folder_path):
+                try:
+                    modified_time = os.path.getmtime(folder_path)
+                    session_dirs.append((folder_path, modified_time))
+                except OSError as e:
+                    logger.warning(f"Could not read mtime for {folder_path}: {e}")
+
+        if len(session_dirs) <= keep_recent:
+            return 0
+
+        max_age_seconds = max_age_hours * 3600
+        stale_dirs = [
+            (folder_path, modified_time)
+            for folder_path, modified_time in session_dirs
+            if (now - modified_time) >= max_age_seconds
+        ]
+        if not stale_dirs:
+            return 0
+
+        stale_dirs.sort(key=lambda item: item[1])
+        removable_count = max(0, len(session_dirs) - keep_recent)
+        removed_count = 0
+        for folder_path, _ in stale_dirs[:removable_count]:
+            # Never remove the active session folder if it already exists.
+            if os.path.basename(folder_path) == self.session_id:
+                continue
+            try:
+                shutil.rmtree(folder_path)
+                removed_count += 1
+                logger.warning(f"Removed old session folder to free space: {folder_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove old session folder {folder_path}: {e}")
+
+        return removed_count
+
+    def _switch_to_fallback_files_root(self):
+        fallback_root = os.getenv("LOGS_FALLBACK_ROOT", "/tmp/consultant_toolkit_logs")
+        fallback_files_root = os.path.join(fallback_root, self.user_id, "files")
+        os.makedirs(fallback_files_root, exist_ok=True)
+        self._session_files_root_override = fallback_files_root
+        logger.warning(f"Using fallback session files root: {fallback_files_root}")
+
     def session_files_folder(self):
-        folder = os.path.join(self.files_folder, self.session_id)
-        os.makedirs(folder, exist_ok=True)
-        return folder
+        folder = os.path.join(self._active_files_root(), self.session_id)
+        try:
+            os.makedirs(folder, exist_ok=True)
+            return folder
+        except OSError as e:
+            if not self._is_no_space_error(e):
+                raise
+
+            logger.error(
+                f"No space left while creating session folder '{folder}'. "
+                "Attempting cleanup before fallback."
+            )
+
+            keep_recent = self.tool_config.get("max_recent_sessions_per_user", 20)
+            max_age_hours = self.tool_config.get("session_files_retention_hours", 168)
+            try:
+                keep_recent = max(1, int(keep_recent))
+            except (TypeError, ValueError):
+                keep_recent = 20
+            try:
+                max_age_hours = max(1, int(max_age_hours))
+            except (TypeError, ValueError):
+                max_age_hours = 168
+
+            self._cleanup_old_session_folders(keep_recent=keep_recent, max_age_hours=max_age_hours)
+            retry_folder = os.path.join(self._active_files_root(), self.session_id)
+
+            try:
+                os.makedirs(retry_folder, exist_ok=True)
+                return retry_folder
+            except OSError as retry_error:
+                if not self._is_no_space_error(retry_error):
+                    raise
+
+                self._switch_to_fallback_files_root()
+                fallback_folder = os.path.join(self._active_files_root(), self.session_id)
+                os.makedirs(fallback_folder, exist_ok=True)
+                return fallback_folder
     
     
     def save_original_file(self, uploaded_file, force_save=False):
         folder = self.session_files_folder()
-        os.makedirs(folder, exist_ok=True)
 
         def save_single_file(file, index=None):
             if index is not None:
@@ -471,8 +570,7 @@ class SessionLogger(FolderSetupMixin) :
             file_path = os.path.join(folder, file_name)
             
             if force_save or not os.path.exists(file_path):
-                with open(file_path, "wb") as f:
-                    FileLockManager(file_path).secure_write(file.getbuffer())
+                FileLockManager(file_path).secure_write(file.getbuffer())
                 logger.info(f"Saved original file {file_path}")
             else:
                 #logger.error(f"File {file_path} already exists. Skipping.")
@@ -535,12 +633,9 @@ class SessionLogger(FolderSetupMixin) :
             return_path: if True the function returns the path where the file was saved
         """
         folder = self.session_files_folder()
-        os.makedirs(folder, exist_ok=True)
         filename = f"{version}_{self.file_name.split('.', 1)[0]}.xlsx"
         path=f"{folder}/{filename}"
-        with open(path, "wb") as f:
-            #f.write(self.to_excel(df))
-            FileLockManager(path).secure_write(self.to_excel(df))
+        FileLockManager(path).secure_write(self.to_excel(df))
         logger.info (f"saved excel log at {path}")
         if return_path:
             return path
@@ -562,7 +657,6 @@ class SessionLogger(FolderSetupMixin) :
             Optional[str]: The path or filename if requested, None otherwise.
         """
         folder = self.session_files_folder()
-        os.makedirs(folder, exist_ok=True)
         filename = f"{name}.json"
         path = f"{folder}/{filename}"
         
