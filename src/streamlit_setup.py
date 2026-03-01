@@ -4,6 +4,7 @@ logger = logging.getLogger(__name__)
 import pandas as pd
 import streamlit as st
 import streamlit_authenticator as stauth
+import errno
 from streamlit_authenticator.utilities.hasher import Hasher
 from src.setup import load_config, setup_logging, CredentialManager
 from src.file_manager import SessionLogger, FileLockManager
@@ -128,7 +129,20 @@ class DataLoader:
         uploaded_file = st.sidebar.file_uploader("Choose a file", type=self.file_types, accept_multiple_files=self.accept_multiple_files)
         if uploaded_file:
             self.user_file = self.load_user_file(uploaded_file)
-            self.session_logger.save_original_file(uploaded_file)
+            try:
+                self.session_logger.save_original_file(uploaded_file)
+            except OSError as e:
+                if getattr(e, "errno", None) == errno.ENOSPC:
+                    logger.warning(
+                        "Could not persist uploaded file due to low disk space. "
+                        "Continuing with in-memory data only."
+                    )
+                    st.sidebar.warning(
+                        "Storage is currently full, so this upload will not be kept in session logs. "
+                        "You can still process the file."
+                    )
+                else:
+                    raise
             
         else:
             self.user_file = None
